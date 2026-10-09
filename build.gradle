@@ -58,3 +58,21 @@ jar {
         rename { "${it}_${project.base.archivesName.get()}" }
     }
 }
+
+tasks.register('copyJarToRoot') {
+    dependsOn jar
+    doLast {
+        def jarFile = layout.buildDirectory.file("libs/${project.archives_base_name}-${project.mod_version}.jar").get().asFile
+        if (jarFile.exists()) {
+            java.nio.file.Files.copy(
+                jarFile.toPath(),
+                project.file("${project.archives_base_name}-${project.mod_version}.jar").toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+            )
+        }
+    }
+}
+
+tasks.named('build') {
+    finalizedBy 'copyJarToRoot'
+}

@@ -51,7 +51,10 @@ This is a normal client-side modding project. Treat it like one.
    render identically into the HUD and into `overlay/MapOverlayWindow.kt`,
    and only the canvas keeps those two in sync. The window is Swing: touch
    AWT state on the EDT only, from the render thread publish a finished op
-   list as one reference write.
+8. **Always commit the compiled jar on every update.** `./gradlew build`
+   automatically outputs `asthoonLite-1.0.0.jar` into the repository root via
+   `copyJarToRoot`. Always stage and commit `asthoonLite-1.0.0.jar` with every
+   commit/push so release binaries are always committed to git.
 
 ## 3. Build and verify
 
@@ -173,6 +176,7 @@ The rules that make it correct:
 5. Add a `check(...)` to `DungeonRegressionCheck.kt` if any of it is pure
    logic.
 6. `./gradlew build`.
+7. `git add asthoonLite-1.0.0.jar` and commit alongside source changes.
 
 Reset-on-disconnect: if a module keeps per-run state, register a
 `ClientPlayConnectionEvents.JOIN`/`DISCONNECT` pair (see `RoomAlerts`) or
