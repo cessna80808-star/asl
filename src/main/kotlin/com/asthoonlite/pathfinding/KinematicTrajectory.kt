@@ -169,21 +169,19 @@ object KinematicTrajectory {
         val computedYaw = (-Math.toDegrees(atan2(aimDx, aimDz))).toFloat()
         val computedPitch = (-Math.toDegrees(atan2(aimDy, aimDistH.coerceAtLeast(0.2)))).toFloat().coerceIn(35.0f, 85.0f)
 
-        // Prioritize explicit recorded node angles when present
-        val finalPitch = if (recordedPitch in 20.0f..88.0f) {
+        // Prioritize explicit recorded node angles when pointing down at floor (pitch >= 40.0°)
+        val finalPitch = if (recordedPitch in 40.0f..88.0f) {
             recordedPitch
         } else {
             computedPitch
         }
 
-        val finalYaw = if (isRedirection) {
-            if (recordedYaw != 0f) recordedYaw else computedYaw
+        val finalYaw = if (recordedYaw != 0f) {
+            recordedYaw
+        } else if (isRedirection) {
+            computedYaw
         } else {
-            if (recordedYaw != 0f && abs(Mth.wrapDegrees(recordedYaw - destYaw)) > 25.0f) {
-                recordedYaw
-            } else {
-                destYaw
-            }
+            destYaw
         }
 
         return BonzoAimPlan(

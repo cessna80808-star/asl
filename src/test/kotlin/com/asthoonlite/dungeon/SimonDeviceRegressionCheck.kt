@@ -834,7 +834,7 @@ internal fun simonDeviceRegressionChecks() {
     )
     check(userAimPlan.isRedirection) { "niggaS4 East turn must be marked as redirection" }
     check(userAimPlan.shotYaw == 184.5f) { "Kinematic aim plan preserves user recorded yaw (184.5°)" }
-    check(userAimPlan.shotPitch == 28.65f) { "Kinematic aim plan preserves recorded pitch" }
+    check(userAimPlan.shotPitch in 45f..65f) { "Kinematic aim plan uses computed downward pitch (~46.5°) to hit ground behind player when recorded pitch is shallow (< 40°)" }
 
     // Straight runway aim with user recorded angles (e.g. niggap3 runway approach)
     val straightUserPlan = KinematicTrajectory.calculateBonzoAimPlan(
@@ -846,7 +846,17 @@ internal fun simonDeviceRegressionChecks() {
         recordedYaw = 16.0f
     )
     check(!straightUserPlan.isRedirection) { "Straight runway must not be redirection" }
-    check(kotlin.math.abs(straightUserPlan.shotYaw - straightUserPlan.destYaw) < 0.1f) { "Straight runway aims towards destination yaw (${straightUserPlan.destYaw}°)" }
+    check(straightUserPlan.shotYaw == 16.0f) { "Straight runway preserves user recorded yaw (16.0°)" }
+
+    val straightDefaultPlan = KinematicTrajectory.calculateBonzoAimPlan(
+        playerPos = Vec3(97.5, 115.0, 50.5),
+        playerVel = Vec3(0.0, 0.0, 0.4),
+        playerEyeY = 116.62,
+        destinationPos = Vec3(94.0, 119.0, 66.5),
+        recordedPitch = 45.0f,
+        recordedYaw = 0.0f
+    )
+    check(kotlin.math.abs(straightDefaultPlan.shotYaw - straightDefaultPlan.destYaw) < 0.1f) { "Straight runway with no recorded yaw defaults to destination yaw (${straightDefaultPlan.destYaw}°)" }
 
     // Closed-loop air guidance: lateral drift correction
     val guidanceLeft = KinematicTrajectory.computeAirGuidance(

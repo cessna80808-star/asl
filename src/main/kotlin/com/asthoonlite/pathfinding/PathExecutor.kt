@@ -475,9 +475,9 @@ object PathExecutor {
             // Auto-select Bonzo's Staff
             selectBonzoStaff()
 
-            // Keep player firmly grounded during approach to Bonzo launch point ONLY for grounded runs;
-            // never clear jump pulse or force grounding if this is an airborne / jump-initiated launch
-            if (!isAirborneBonzo && bonzoState == BonzoState.IDLE && jumpTicksRemaining > 0) {
+            // Keep player firmly grounded during arrival at Bonzo launch point ONLY within 1.5m for grounded runs;
+            // allows normal gap-jumping when approaching from afar across pits/gaps
+            if (!isAirborneBonzo && bonzoState == BonzoState.IDLE && distH <= 1.5 && jumpTicksRemaining > 0) {
                 jumpTicksRemaining = 0
                 mc.options.keyJump.setDown(false)
             }
@@ -518,13 +518,13 @@ object PathExecutor {
             val launchDistanceThreshold = when {
                 isAirborneBonzo && currentBpsH >= 12.0 -> 2.0
                 isAirborneBonzo -> 1.5
-                currentBpsH >= 12.0 -> 1.3
+                currentBpsH >= 12.0 -> 1.5
                 else -> 1.0
             }
-            val isArrivedOnPlatform = distH <= launchDistanceThreshold || (passedAlongRoute && distH <= 1.4)
+            val isArrivedOnPlatform = distH <= launchDistanceThreshold || (passedAlongRoute && distH <= 1.6)
             val requiresGrounded = !isAirborneBonzo
 
-            val rawLaunchPitch = if (target.pitch in 20.0f..88.0f) target.pitch else launchParams.shotPitch
+            val rawLaunchPitch = if (target.pitch in 40.0f..88.0f) target.pitch else launchParams.shotPitch
             val shotYaw = launchParams.shotYaw
             var effectiveLaunchPitch = rawLaunchPitch
             val hasGroundImpact = run {
@@ -539,12 +539,24 @@ object PathExecutor {
                         effectiveLaunchPitch = launchParams.shotPitch
                         true
                     } else {
-                        effectiveLaunchPitch = if (target.pitch in 35.0f..75.0f) target.pitch else 65.0f
-                        true
+                        val steepClip = player.eyePosition.add(Vec3.directionFromRotation(70.0f, shotYaw).scale(4.0))
+                        val steepHit = level.clip(ClipContext(player.eyePosition, steepClip, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player))
+                        if (steepHit.type == HitResult.Type.BLOCK && player.eyePosition.distanceTo(steepHit.location) <= 4.0) {
+                            effectiveLaunchPitch = 70.0f
+                            true
+                        } else {
+                            false
+                        }
                     }
                 } else {
-                    effectiveLaunchPitch = if (target.pitch in 35.0f..75.0f) target.pitch else 65.0f
-                    true
+                    val steepClip = player.eyePosition.add(Vec3.directionFromRotation(70.0f, shotYaw).scale(4.0))
+                    val steepHit = level.clip(ClipContext(player.eyePosition, steepClip, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player))
+                    if (steepHit.type == HitResult.Type.BLOCK && player.eyePosition.distanceTo(steepHit.location) <= 4.0) {
+                        effectiveLaunchPitch = 70.0f
+                        true
+                    } else {
+                        false
+                    }
                 }
             }
 
@@ -739,7 +751,7 @@ object PathExecutor {
             }
             val prePitch = if (target.hasLookNode) {
                 if (target.pitch in 20.0f..88.0f) target.pitch else 79.0f
-            } else if (target.pitch in 20.0f..88.0f) {
+            } else if (target.pitch in 40.0f..88.0f) {
                 target.pitch
             } else {
                 preLaunchParams.shotPitch
@@ -890,18 +902,18 @@ object PathExecutor {
         // Auto gap jump: trigger on WALK nodes or when crossing a gap towards a device platform!
         // BONZO_STAFF nodes must NEVER auto-jump during approach — they must stay grounded for the staff blast!
         val canAutoGapJump = (nodeType == RouteNodeType.WALK || isStationaryDest || (nodeType == RouteNodeType.BONZO_STAFF && distH > 1.8)) && player.onGround() && isLedge && distH > 0.8 && !isCrouchNode && !isDescending
-        val isObstacleCollision = !isDescending && player.horizontalCollision && player.onGround() && nodeType != RouteNodeType.BREAK
-        val isElevationStep = !isDescending && target.y > player.y + 0.35 && distH < 2.5 && player.onGround() && nodeType != RouteNodeType.BREAK
+        val isObstacleCollision = !isDescending && player.horizontalCollision && player.onGround() && nodeType != RouteNodeType.BREAK && !isApproachingBreak
+        val isElevationStep = !isDescending && target.y > player.y + 0.35 && distH < 2.5 && player.onGround() && nodeType != RouteNodeType.BREAK && !isApproachingBreak
 
         // Break Node handling for jump suppression
         val isCurrentBreakSolid = nodeType == RouteNodeType.BREAK && !isBlockBroken(level, target)
         val isNextBreakSolid = nextTarget?.nodeType() == RouteNodeType.BREAK && !isBlockBroken(level, nextTarget)
         val targetBreakPos = when {
             isCurrentBreakSolid -> BlockPos.containing(target.x, target.y, target.z)
-            isNextBreakSolid && distH < 3.5 -> BlockPos.containing(nextTarget.x, nextTarget.y, nextTarget.z)
+            isNextBreakSolid && distH < 5.0 -> BlockPos.containing(nextTarget.x, nextTarget.y, nextTarget.z)
             else -> null
         }
-        val isMiningObstacle = isCurrentBreakSolid || (targetBreakPos != null && distH < 1.8)
+        val isMiningObstacle = isApproachingBreak || isCurrentBreakSolid || (targetBreakPos != null && distH < 3.5)
         val prevNode = points.getOrNull(currentNodeIndex - 1)
         val isExitingBreakDoorway = prevNode?.nodeType() == RouteNodeType.BREAK &&
             hypot(player.x - prevNode.x, player.z - prevNode.z) < 1.5 && nodeType != RouteNodeType.BREAK
@@ -1255,6 +1267,7 @@ object PathExecutor {
         val goalYaw: Float
         val goalPitch: Float
         val isFastAim: Boolean
+        var isBreakAim = false
 
         when {
             bonzoState == BonzoState.POST_FIRE_PROPEL -> {
@@ -1270,7 +1283,7 @@ object PathExecutor {
                 isFastAim = true
             }
             (nodeType == RouteNodeType.BREAK && !level.getBlockState(BlockPos.containing(target.x, target.y, target.z)).isAir) ||
-            (nextTarget?.nodeType() == RouteNodeType.BREAK && !level.getBlockState(BlockPos.containing(nextTarget.x, nextTarget.y, nextTarget.z)).isAir && distH < 3.5) -> {
+            (nextTarget?.nodeType() == RouteNodeType.BREAK && !level.getBlockState(BlockPos.containing(nextTarget.x, nextTarget.y, nextTarget.z)).isAir && distH < 6.0) -> {
                 val bPos = if (nodeType == RouteNodeType.BREAK && !level.getBlockState(BlockPos.containing(target.x, target.y, target.z)).isAir) {
                     BlockPos.containing(target.x, target.y, target.z)
                 } else {
@@ -1282,8 +1295,9 @@ object PathExecutor {
                 val bdz = bCenter.z - currentZ
                 val bdistH = sqrt(bdx * bdx + bdz * bdz)
                 goalYaw = (-Math.toDegrees(atan2(bdx, bdz))).toFloat()
-                goalPitch = (-Math.toDegrees(atan2(bdy, bdistH))).toFloat().coerceIn(-89f, 89f)
+                goalPitch = (-Math.toDegrees(atan2(bdy, bdistH.coerceAtLeast(0.05)))).toFloat().coerceIn(-89f, 89f)
                 isFastAim = true
+                isBreakAim = true
             }
             nodeType == RouteNodeType.BONZO_STAFF && distH < 3.0 -> {
                 val destPos = if (nextTarget != null) Vec3(nextTarget.x, nextTarget.y, nextTarget.z) else Vec3(target.x, target.y, target.z)
@@ -1364,8 +1378,13 @@ object PathExecutor {
                 goalYaw = (-Math.toDegrees(atan2(aimDx, aimDz))).toFloat()
                 val targetEyeY = if (nodeType == RouteNodeType.BREAK) target.y + 0.5 else target.y + 1.2
                 val aimDy = targetEyeY - currentEyeY
-                val pitchDistH = aimDistH.coerceAtLeast(3.5)
-                goalPitch = (-Math.toDegrees(atan2(aimDy, pitchDistH))).toFloat().coerceIn(-15.0f, 15.0f)
+                val pitchDistH = if (nodeType == RouteNodeType.BREAK) aimDistH.coerceAtLeast(0.1) else aimDistH.coerceAtLeast(3.5)
+                goalPitch = if (nodeType == RouteNodeType.BREAK) {
+                    (-Math.toDegrees(atan2(aimDy, pitchDistH))).toFloat().coerceIn(-89.0f, 89.0f)
+                } else {
+                    (-Math.toDegrees(atan2(aimDy, pitchDistH))).toFloat().coerceIn(-15.0f, 15.0f)
+                }
+                if (nodeType == RouteNodeType.BREAK) isBreakAim = true
                 isFastAim = false
             }
         }
@@ -1374,6 +1393,7 @@ object PathExecutor {
         val isPropelling = bonzoState == BonzoState.POST_FIRE_PROPEL
         val rate = when {
             isPropelling -> 1.5
+            isBreakAim -> 2.5
             isFastAim -> 0.45
             else -> 0.30
         }
@@ -1383,11 +1403,13 @@ object PathExecutor {
 
         val maxFrameYawStep = when {
             isPropelling -> 80.0f * dtTicks
+            isBreakAim -> 60.0f * dtTicks
             isFastAim -> 18.0f * dtTicks
             else -> 12.0f * dtTicks
         }
         val maxFramePitchStep = when {
             isPropelling -> 60.0f * dtTicks
+            isBreakAim -> 45.0f * dtTicks
             isFastAim -> 18.0f * dtTicks
             else -> 6.0f * dtTicks
         }
@@ -1609,7 +1631,7 @@ object PathExecutor {
         player.yRotO = params.destYaw
 
         bonzoState = BonzoState.POST_FIRE_PROPEL
-        bonzoTicksRemaining = 18
+        bonzoTicksRemaining = 26
         bonzoAirborneSinceKnockback = false
     }
 
