@@ -167,7 +167,7 @@ object KinematicTrajectory {
         val aimDy = (groundImpactY - 0.1) - playerEyeY
 
         val computedYaw = (-Math.toDegrees(atan2(aimDx, aimDz))).toFloat()
-        val computedPitch = (-Math.toDegrees(atan2(aimDy, aimDistH.coerceAtLeast(0.2)))).toFloat().coerceIn(35.0f, 85.0f)
+        val computedPitch = (-Math.toDegrees(atan2(aimDy, aimDistH.coerceAtLeast(0.2)))).toFloat().coerceIn(45.0f, 75.0f)
 
         // Prioritize explicit recorded node angles when pointing down at floor (pitch >= 40.0°)
         val finalPitch = if (recordedPitch in 40.0f..88.0f) {
